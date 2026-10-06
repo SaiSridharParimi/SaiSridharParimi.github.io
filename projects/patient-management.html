@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patient Management - Sai Sridhar Parimi</title>
+  <meta name="description" content="Course project: a Spring Boot microservice system using an API gateway, JWT auth, gRPC, and Kafka.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Patient Management Microservices <span class="tag">Course project</span></h1>
+      <p class="hook">Five Spring Boot services behind one gateway, using a synchronous gRPC call where the caller needs an answer and a Kafka event where it doesn't.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>Java 21</li><li>Spring Boot 3.4</li><li>Spring Cloud Gateway</li><li>gRPC / Protobuf</li><li>Kafka</li><li>PostgreSQL</li><li>JWT</li><li>Docker</li><li>OpenAPI</li>
+      </ul>
+
+      <h2>Problem</h2>
+      <p>Registering a patient touches several concerns: the patient record, a billing account, and analytics. In a monolith these are coupled in one codebase and one deploy. This project splits them into independently deployable services and works through how each pair should communicate.</p>
+
+      <h2>Approach / architecture</h2>
+      <ol class="flow">
+        <li><strong>API gateway</strong><span>Spring Cloud Gateway is the single entry point. It routes <code>/auth/**</code> to auth-service and <code>/api/patients/**</code> to patient-service, and a custom <code>JWTValidation</code> filter validates tokens with auth-service before forwarding. It also proxies each service's OpenAPI docs.</span></li>
+        <li><strong>auth-service</strong><span><code>/login</code> checks BCrypt-hashed credentials and issues a signed JWT (email + role, 10-hour expiry); <code>/validate</code> verifies tokens for the gateway.</span></li>
+        <li><strong>patient-service</strong><span>REST CRUD on PostgreSQL with bean validation (including a validation group for create-only fields), duplicate-email checks, and centralized exception handling.</span></li>
+        <li><strong>billing-service over gRPC</strong><span>Creating a patient makes a blocking <code>CreateBillingAccount</code> call; deleting one calls <code>DeleteBillingAccount</code>. The contract is a shared <code>.proto</code> file.</span></li>
+        <li><strong>analytics-service over Kafka</strong><span>After a create, patient-service publishes a Protobuf-encoded <code>PatientEvent</code> to the <code>patient</code> topic, which analytics-service consumes in its own consumer group.</span></li>
+        <li><strong>Containerized</strong><span>Each service has a multi-stage Dockerfile: a Maven + JDK 21 build stage with dependencies cached as their own layer, then a runtime stage that contains only the built JAR.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>gRPC for billing, Kafka for analytics</h3>
+        <p>Billing setup is one-to-one and the caller needs the result, so it's a synchronous gRPC call with a typed contract and low overhead. Analytics is one-to-many and nobody waits on it, so it's an event. The consequence: patient creation depends on billing being available, while analytics can lag or go down without affecting users.</p>
+      </div>
+      <div class="decision">
+        <h3>Protobuf for events as well as RPC</h3>
+        <p>Using Protobuf for the Kafka payload gives producer and consumer one shared schema and compact messages, in exchange for payloads that aren't human-readable in Kafka tooling.</p>
+      </div>
+      <div class="decision">
+        <h3>Authentication at the gateway</h3>
+        <p>Downstream services don't parse tokens themselves; the gateway validates once per request. That centralizes security logic in one place, at the cost of an extra network hop on protected calls.</p>
+      </div>
+
+      <h3>Next steps</h3>
+      <p>A transactional outbox so the database write and the Kafka event can't diverge, and retries with a circuit breaker on the gRPC call to billing.</p>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">5</span><span class="label">independently containerized services</span></li>
+        <li><span class="value">3</span><span class="label">communication styles: REST, gRPC, Kafka</span></li>
+      </ul>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/Sridhar3489/patient-management">Source on GitHub</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

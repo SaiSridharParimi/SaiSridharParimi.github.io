@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deployment Progression - Sai Sridhar Parimi</title>
+  <meta name="description" content="Three stages: a single Dockerized service, a monorepo deployed by CI over SSH, and a Dockerized monorepo shipped as versioned images.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Deployment Progression</h1>
+      <p class="hook">The same TypeScript + Postgres stack deployed three ways - each stage solving the problem the previous one exposed.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>Docker</li><li>Docker Compose</li><li>Turborepo</li><li>pnpm workspaces</li><li>Prisma</li><li>Next.js</li><li>Express</li><li>WebSockets</li><li>nginx</li><li>pm2</li><li>GitHub Actions</li><li>Docker Hub</li>
+      </ul>
+
+      <h2>Problem</h2>
+      <p>The application is intentionally small - an HTTP API, a WebSocket server, a Next.js frontend, and one Prisma schema - so the focus is the deployment. The questions: how do you get schema migrations, multiple services, and repeatable builds onto a server without running anything by hand, and what does each approach cost?</p>
+
+      <h2>Approach / architecture</h2>
+
+      <section class="stage" aria-labelledby="s1">
+        <h3 id="s1">Stage 1 - Single service in a container <small>(be-docker)</small></h3>
+        <ol class="flow">
+          <li><strong>Image</strong><span><code>node:22-alpine</code>; dependencies installed, Prisma client generated, and TypeScript compiled at build time.</span></li>
+          <li><strong>Migrate on start</strong><span>An entrypoint runs <code>prisma migrate deploy</code> before starting the server, so the schema is always current before the first request.</span></li>
+          <li><strong>Compose</strong><span>Postgres and the backend on a user-defined bridge network, with the app reaching the database by service name.</span></li>
+        </ol>
+        <p><strong>Next challenge:</strong> multiple services and automated delivery to a server.</p>
+      </section>
+
+      <section class="stage" aria-labelledby="s2">
+        <h3 id="s2">Stage 2 - Monorepo with CI/CD <small>(app-deploy)</small></h3>
+        <ol class="flow">
+          <li><strong>Monorepo</strong><span>Turborepo + pnpm workspaces: a Next.js web app, an Express HTTP API, a WebSocket server, and a shared <code>@repo/db</code> package that exports one Prisma client to all three.</span></li>
+          <li><strong>Continuous deployment</strong><span>On push to <code>main</code>, GitHub Actions connects to the staging VM over SSH, pulls the latest code, bootstraps the toolchain, runs migrations, builds, and restarts each app under pm2.</span></li>
+          <li><strong>Routing</strong><span>nginx serves one subdomain per app (frontend, HTTP API, WebSocket) as a reverse proxy, with the upgrade headers WebSockets need.</span></li>
+        </ol>
+        <p><strong>Next challenge:</strong> builds ran on the server, so every server needed the full toolchain and releases depended on its state.</p>
+      </section>
+
+      <section class="stage" aria-labelledby="s3">
+        <h3 id="s3">Stage 3 - Dockerized monorepo <small>(monorepo-docker-deployment)</small></h3>
+        <ol class="flow">
+          <li><strong>One Dockerfile per app</strong><span>Workspace manifests and shared packages are copied and installed before each app's source, so dependency layers are reused across builds.</span></li>
+          <li><strong>Build once in CI</strong><span>GitHub Actions builds the HTTP, WebSocket, and frontend images and pushes them to Docker Hub, tagged with the commit SHA.</span></li>
+          <li><strong>Deploy by pulling</strong><span>A deploy job, gated on a successful build, pulls the exact SHA-tagged backend images on the VM and replaces the running containers.</span></li>
+          <li><strong>Migrations at start-up</strong><span>Entrypoints apply pending migrations with <code>prisma migrate deploy</code> before starting each service.</span></li>
+          <li><strong>Local parity</strong><span>A Compose file runs all three apps plus Postgres with a persistent volume on one network.</span></li>
+        </ol>
+      </section>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>Build artifacts once, run them anywhere</h3>
+        <p>Moving builds from the server into CI means the server only needs Docker. Tagging images by commit SHA ties every running container to an exact commit, and rolling back is just pulling an earlier tag.</p>
+      </div>
+      <div class="decision">
+        <h3>One shared database package</h3>
+        <p>A single Prisma package in the monorepo gives all three apps the same schema and generated types, so a schema change is one change, type-checked everywhere it's used.</p>
+      </div>
+      <div class="decision">
+        <h3>Migrations as part of start-up</h3>
+        <p>Running <code>prisma migrate deploy</code> in each entrypoint keeps deploys to a single step and guarantees the schema is current before traffic arrives. The tradeoff is coupling start-up to the database being reachable.</p>
+      </div>
+      <div class="decision">
+        <h3>Simplicity over zero downtime</h3>
+        <p>Stage 3 replaces containers stop-then-start, which is simple and fine for one VM but leaves a brief gap per deploy. Rolling, zero-downtime releases are covered in the <a href="zero-downtime-aws.html">AWS platform</a> project.</p>
+      </div>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">3</span><span class="label">deployment stages, each building on the last</span></li>
+        <li><span class="value">3</span><span class="label">images built and versioned per commit</span></li>
+        <li><span class="value">1</span><span class="label">shared Prisma package across 3 apps</span></li>
+      </ul>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/Sridhar3489/be-docker">be-docker</a> - Stage 1</li>
+        <li><a href="https://github.com/Sridhar3489/app-deploy">app-deploy</a> - Stage 2</li>
+        <li><a href="https://github.com/Sridhar3489/monorepo-docker-deployment">monorepo-docker-deployment</a> - Stage 3</li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

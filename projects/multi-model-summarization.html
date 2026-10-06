@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Multi-Model Summarization - Sai Sridhar Parimi</title>
+  <meta name="description" content="A comparative study of extractive, abstractive, and hybrid summarization across news, legislation, government reports, and email.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Multi-Model Document Summarization</h1>
+      <p class="hook">Extractive, abstractive, and hybrid summarizers compared across four domains - with T5 reaching 0.4911 ROUGE-1 on legislative bills and a hybrid pipeline for documents too long for a single model.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>BERT</li><li>RoBERTa</li><li>BART</li><li>T5</li><li>PyTorch</li><li>Hugging Face Transformers</li><li>NLTK</li><li>ROUGE / BERTScore</li>
+      </ul>
+      <p>Team project · Northeastern University · August 2025</p>
+
+      <h2>Problem</h2>
+      <p>Summarization models are usually tuned and reported on one dataset, but real documents vary enormously: a 56-token news highlight, a 207-token bill summary, a 553-word executive summary of a 9,409-word government report, a 5-token email subject line. Three problems follow: models trained on news don't transfer to legal or technical text, quality collapses at extreme compression, and there's no clear guidance on when to use extractive, abstractive, or hybrid methods.</p>
+
+      <h2>Approach / architecture</h2>
+      <p>A modular framework with three summarizers that run alone or together, evaluated on CNN/DailyMail (news), BillSum (legislation), GovReport (long government reports), and AESLC (email subject lines).</p>
+      <ol class="flow">
+        <li><strong>Extractive module</strong><span>Sentences are split with NLTK and encoded with BERT or RoBERTa. Each sentence is scored by cosine similarity to the mean document embedding, and the top-k are returned in their original order, so every word in the summary comes from the source.</span></li>
+        <li><strong>Abstractive module</strong><span>BART and T5 fine-tuned per dataset, decoded with beam search (4-6 beams), length penalties of 1.0-1.2, and n-gram blocking against repetition.</span></li>
+        <li><strong>Hybrid pipeline</strong><span>For long documents, an extractor first picks k = min(max(⌈2.5·log|D|⌉, 3), 8) sentences, weighted toward early positions and filtered for diversity (any candidate with &gt; 0.8 similarity to an already chosen sentence is skipped). T5 then rewrites the condensed text, and if BERTScore against the extract falls below 0.7, the pipeline falls back to the extractive summary.</span></li>
+        <li><strong>Automatic method selection</strong><span>Documents under 1,024 tokens go to the best single model for the content; longer ones go through the hybrid pipeline. Users don't have to know which model to pick.</span></li>
+        <li><strong>Training</strong><span>Sentence classifiers trained on balanced labels from summary overlap (LR 2e-5, batch 8, 3 epochs); BART at 3e-5 for 2 epochs; T5 for 3 epochs, max input 512 tokens; mixed-precision training on NVIDIA H200 GPUs.</span></li>
+        <li><strong>Interactive web interface</strong><span>Lets users run each method, compare outputs, and see compression ratio and processing time.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>Extract, then rewrite</h3>
+        <p>Transformer summarizers cap input at roughly 1,024 tokens, and GovReport documents run to thousands of words. Extracting first shrinks the input to fit while keeping the most salient content; rewriting restores fluency. The cost is a two-stage pipeline with more parameters to tune and higher latency.</p>
+      </div>
+      <div class="decision">
+        <h3>A quality gate on generation</h3>
+        <p>Abstractive models can hallucinate. Checking the generated summary against its own extract with BERTScore, and falling back to extraction when it drifts, trades some fluency for factual safety.</p>
+      </div>
+      <div class="decision">
+        <h3>Accuracy vs. fluency vs. speed</h3>
+        <p>Extractive methods guarantee factual accuracy and are fast enough for interactive use, but read less smoothly. Abstractive methods read naturally but risk hallucination and cost more compute. The hybrid sits between them on quality and is the slowest.</p>
+      </div>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">0.4911</span><span class="label">ROUGE-1, T5 on BillSum - +3.28 pts over prior state of the art</span></li>
+        <li><span class="value">0.3548</span><span class="label">ROUGE-1, BART on AESLC email subjects</span></li>
+        <li><span class="value">0.8456</span><span class="label">BERTScore-F1, hybrid on BillSum (best)</span></li>
+        <li><span class="value">0.3-0.5 s</span><span class="label">extractive summary of a 1,000-word document</span></li>
+      </ul>
+
+      <div class="table-wrap">
+        <table>
+          <caption>ROUGE-1 / BERTScore-F1 by dataset (best ROUGE-1 per dataset in bold)</caption>
+          <thead>
+            <tr><th scope="col">Model</th><th scope="col" class="num">CNN/DM</th><th scope="col" class="num">BillSum</th><th scope="col" class="num">GovReport</th><th scope="col" class="num">AESLC</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>T5</td><td class="num"><strong>0.3324</strong> / 0.874</td><td class="num"><strong>0.4911</strong> / 0.823</td><td class="num">0.3654 / 0.853</td><td class="num">0.3416 / 0.864</td></tr>
+            <tr><td>BART</td><td class="num">0.3323 / 0.876</td><td class="num">0.0210 / 0.601</td><td class="num"><strong>0.3934</strong> / 0.866</td><td class="num"><strong>0.3548</strong> / 0.868</td></tr>
+            <tr><td>Hybrid</td><td class="num">0.2532 / 0.859</td><td class="num">0.4567 / 0.846</td><td class="num">0.3447 / 0.848</td><td class="num">0.2749 / 0.854</td></tr>
+            <tr><td>BERT extractive</td><td class="num">0.2250 / 0.846</td><td class="num">0.3801 / 0.786</td><td class="num">0.2909 / 0.845</td><td class="num">0.0625 / 0.814</td></tr>
+            <tr><td>RoBERTa extractive</td><td class="num">0.2248 / 0.847</td><td class="num">0.3823 / 0.789</td><td class="num">0.2120 / 0.831</td><td class="num">0.0612 / 0.813</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Findings</h3>
+      <ul>
+        <li><strong>No single model wins everywhere.</strong> T5 leads on legislation and news, BART on government reports and email subjects. BART scores well on three domains yet collapses on BillSum (0.0210), a clear case of domain mismatch with its pre-training.</li>
+        <li><strong>The hybrid is the consistent all-rounder.</strong> It's second-best on BillSum (0.4567 ROUGE-1) and posts the best BERTScore there, showing strong semantic fidelity.</li>
+        <li><strong>Compression has a cliff.</strong> Quality holds steady up to about 85% compression (ROUGE-1 ~0.45 → 0.40), then drops below 0.30 by 95%. Practical systems should target 80-85% unless they use a specialized model.</li>
+        <li><strong>Latency per 1,000-word document:</strong> extractive 0.3-0.5 s, abstractive 2-4 s, hybrid 3-5 s.</li>
+      </ul>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="../assets/multi_model_summarization.pdf">Read the paper (PDF)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

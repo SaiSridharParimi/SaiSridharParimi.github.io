@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cloud IDE - Sai Sridhar Parimi</title>
+  <meta name="description" content="A browser IDE for pair coding: shared rooms, a live file tree, Monaco editor, and a real terminal over WebSockets.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Cloud IDE</h1>
+      <p class="hook">Open a room, share the link, and code together in the browser - same files, same editor, same live bash terminal.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>React 19</li><li>TypeScript</li><li>Vite</li><li>Monaco Editor</li><li>xterm.js</li><li>Node.js</li><li>Socket.IO</li><li>node-pty</li><li>chokidar</li><li>Prisma</li><li>PostgreSQL</li><li>JWT</li>
+      </ul>
+
+      <h2>Problem</h2>
+      <p>Remote pairing usually means one person shares a screen while the other watches. Hosted IDEs solve this but hide how they work. This project builds the core loop from scratch: a shared workspace where everyone in a room sees the same files, can edit, and can run commands in a terminal that executes on the server.</p>
+
+      <h2>Approach / architecture</h2>
+      <ol class="flow">
+        <li><strong>Accounts</strong><span>Sign-up and sign-in over REST. Passwords are hashed with bcrypt; sign-in returns a JWT plus a user slug, which the client verifies with the server before entering a room.</span></li>
+        <li><strong>Arenas and rooms</strong><span>"Create Arena" creates an arena and its room in Postgres (Prisma models <code>User</code>, <code>Arena</code>, <code>Room</code>) and returns a short shareable slug. The arena URL is the invite link.</span></li>
+        <li><strong>Presence</strong><span>Joining puts the socket in a Socket.IO room named after the slug and records membership in the database. Members get live join/leave events, and the header shows an avatar for each person in the room.</span></li>
+        <li><strong>Terminal</strong><span><code>node-pty</code> spawns a real bash shell. xterm.js keystrokes stream up over the socket and terminal output streams back.</span></li>
+        <li><strong>Files and editor</strong><span>The server serves a recursive tree of the workspace. Monaco picks syntax highlighting from the file extension, and edits auto-save over the socket after a 2-second pause.</span></li>
+        <li><strong>Live file tree</strong><span>chokidar watches the workspace, so any change - from the editor or from a command like <code>touch</code> in the terminal - pushes a refresh to connected clients.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>A real PTY instead of a simulated shell</h3>
+        <p>Using <code>node-pty</code> means prompts, colors, and interactive programs behave like a local terminal. Combined with the file watcher, one mechanism keeps the file tree in sync whether files change from the editor or the shell.</p>
+      </div>
+      <div class="decision">
+        <h3>Debounced auto-save</h3>
+        <p>Saving two seconds after typing stops keeps socket traffic low and avoids writing to disk on every keystroke. The tradeoff is that concurrent edits to the same file resolve as last-write-wins.</p>
+      </div>
+      <div class="decision">
+        <h3>Stateless auth, persisted rooms</h3>
+        <p>JWTs keep authentication stateless, while room membership lives in Postgres so the member list can be queried over REST (<code>/room/users</code>) as well as pushed over sockets.</p>
+      </div>
+
+      <h3>Next steps</h3>
+      <p>Per-room sandboxing (a container and workspace per arena), scoping terminal and file events to each room, and real-time co-editing with a CRDT such as Yjs.</p>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/Sridhar3489/cloud-ide">Source on GitHub</a> - <code>client/</code> (React) and <code>docker-server/</code> (Node)</li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Intent Classification - Sai Sridhar Parimi</title>
+  <meta name="description" content="Fine-tuning DistilBERT on Banking77 + CLINC150 for a single 228-intent classifier.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Multi-Domain Intent Classification</h1>
+      <p class="hook">One fine-tuned DistilBERT that routes both banking requests and everyday assistant requests - 93.8% accurate on in-scope queries, with 228 classes including out-of-scope.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>DistilBERT</li><li>Hugging Face Transformers</li><li>PEFT / LoRA</li><li>scikit-learn</li><li>Streamlit</li>
+      </ul>
+
+      <h2>Problem</h2>
+      <p>A bank's assistant gets two kinds of messages: domain-specific ones ("my card payment was declined") and general ones ("set an alarm for 7am"). Running a separate classifier per domain means deciding which model to call before you know what the user wants. The goal was a single classifier over both label spaces that also recognizes when a request is out of scope.</p>
+
+      <h2>Approach</h2>
+      <ol class="flow">
+        <li><strong>Merge two public datasets</strong><span>Banking77 (13,083 queries, 77 intents) and CLINC150 "plus" (23,850 queries, 150 intents + out-of-scope). Labels are namespaced <code>banking_N</code> / <code>clinc_N</code> to give 228 classes.</span></li>
+        <li><strong>Clean and de-duplicate</strong><span>Lower-casing and contraction expansion, then removal of 208 duplicate texts → 36,725 samples.</span></li>
+        <li><strong>Split, stratified by label</strong><span>Train 23,996 · validation 4,235 · test 8,494. The test set is held out entirely from model selection.</span></li>
+        <li><strong>Fine-tune and sweep the learning rate</strong><span><code>distilbert-base-uncased</code> (67.1M params), max length 128, batch 32, 5 epochs, warmup 10%, weight decay 0.01, best checkpoint by validation F1. Three runs: LR 1e-5, 2e-5, 5e-5.</span></li>
+        <li><strong>Parameter-efficient variant</strong><span>A LoRA adapter (r = 8, α = 16 on the attention query/value projections) trains 913,380 parameters (1.34% of the model), cutting training time by 66% and memory by 75%, with a 2 MB adapter instead of a 256 MB model.</span></li>
+        <li><strong>Evaluate rigorously</strong><span>Accuracy, weighted and macro F1, a bootstrap confidence interval, a McNemar significance test against a majority-class baseline, and error analysis by class, domain, query length, and scope.</span></li>
+        <li><strong>Serve</strong><span>A Streamlit app returns the top-k intents with confidences, plus a batch mode with CSV export.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>One label space instead of a domain router</h3>
+        <p>A single model is simpler to serve and avoids a routing step that can itself be wrong. The risk is that overlapping intents in the two datasets (balance, transfer, card issues) compete. The error analysis tests this directly: only 8.7% of errors land in the wrong domain.</p>
+      </div>
+      <div class="decision">
+        <h3>Learning rate was the lever that mattered</h3>
+        <p>At 1e-5 the model was still under-fit after 5 epochs (74.9% accuracy). 5e-5 converged fastest of the three runs and scored best, so it became the served model.</p>
+      </div>
+      <div class="decision">
+        <h3>Reporting in-scope and out-of-scope separately</h3>
+        <p>Recognizing "none of the above" is a different task from choosing among known intents, so a single accuracy number hides what the model is doing. Splitting the test set by scope shows the classifier is strong on real intents and conservative about rejecting them.</p>
+      </div>
+      <div class="decision">
+        <h3>Domain-aware re-ranking in the demo</h3>
+        <p>The Streamlit app gently boosts banking intents (×1.15) when a query contains banking keywords like "account" or "card", which helps the overlapping intents in an interactive setting. Reported metrics are from the model alone.</p>
+      </div>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">93.8%</span><span class="label">in-scope accuracy</span></li>
+        <li><span class="value">89.9%</span><span class="label">overall test accuracy</span></li>
+        <li><span class="value">0.916</span><span class="label">macro F1 · 95% CI 0.909-0.920</span></li>
+        <li><span class="value">21 ms</span><span class="label">latency per query · 47 QPS</span></li>
+      </ul>
+
+      <div class="table-wrap">
+        <table>
+          <caption>Learning-rate sweep vs. baselines (test set, n = 8,494)</caption>
+          <thead>
+            <tr><th scope="col">Model</th><th scope="col" class="num">Accuracy</th><th scope="col" class="num">F1 (weighted)</th><th scope="col" class="num">F1 (macro)</th><th scope="col" class="num">Train time</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Random</td><td class="num">0.4%</td><td class="num">-</td><td class="num">-</td><td class="num">-</td></tr>
+            <tr><td>Majority class</td><td class="num">11.8%</td><td class="num">-</td><td class="num">-</td><td class="num">-</td></tr>
+            <tr><td>DistilBERT, LR 1e-5</td><td class="num">74.9%</td><td class="num">0.728</td><td class="num">0.742</td><td class="num">76 min</td></tr>
+            <tr><td>DistilBERT, LR 2e-5</td><td class="num">88.8%</td><td class="num">0.885</td><td class="num">0.907</td><td class="num">78 min</td></tr>
+            <tr class="best"><td>DistilBERT, LR 5e-5</td><td class="num">89.9%</td><td class="num">0.896</td><td class="num">0.916</td><td class="num">65 min</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Training ran on CPU. The best model's improvement over the majority-class baseline is significant (McNemar χ² = 5,923, p &lt; 0.001).</p>
+
+      <h3>In-scope vs. out-of-scope</h3>
+      <div class="table-wrap">
+        <table>
+          <caption>Test set split by scope (7,494 in-scope queries, 1,000 out-of-scope)</caption>
+          <thead>
+            <tr><th scope="col">Model</th><th scope="col" class="num">In-scope accuracy</th><th scope="col" class="num">In-scope macro F1</th><th scope="col" class="num">OOS recall</th><th scope="col" class="num">In-scope → OOS</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>LR 1e-5</td><td class="num">76.5%</td><td class="num">0.763</td><td class="num">63.5%</td><td class="num">81</td></tr>
+            <tr><td>LR 2e-5</td><td class="num">92.9%</td><td class="num">0.934</td><td class="num">57.9%</td><td class="num">25</td></tr>
+            <tr class="best"><td>LR 5e-5</td><td class="num">93.8%</td><td class="num">0.942</td><td class="num">60.3%</td><td class="num">20</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Full fine-tuning vs. LoRA</h3>
+      <div class="table-wrap">
+        <table>
+          <caption>Training cost of the LoRA adapter vs. full fine-tuning</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col" class="num">Full fine-tune</th><th scope="col" class="num">LoRA</th><th scope="col" class="num">Saving</th></tr></thead>
+          <tbody>
+            <tr><td>Training time</td><td class="num">843 s</td><td class="num">287 s</td><td class="num">66%</td></tr>
+            <tr><td>Memory</td><td class="num">16 GB</td><td class="num">4 GB</td><td class="num">75%</td></tr>
+            <tr><td>Artifact size</td><td class="num">256 MB</td><td class="num">2 MB</td><td class="num">99%</td></tr>
+            <tr><td>Trainable parameters</td><td class="num">67.1M</td><td class="num">0.91M</td><td class="num">98.6%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Error analysis</h3>
+      <ul>
+        <li>Only 20 of 7,494 real requests are wrongly rejected as out-of-scope.</li>
+        <li>Of all errors, 8.7% cross domains (banking ↔ general); the merged label space holds up.</li>
+        <li>Error rate by length: 9.5% for 1-5 words, ~10.4% for 6-20 words, 6.4% for 20+ words - longer queries carry more signal.</li>
+        <li>The largest single error source is out-of-scope queries being matched to a real intent, which points to the next step below.</li>
+      </ul>
+
+      <h3>Next steps</h3>
+      <p>Add a confidence threshold that routes low-confidence predictions to out-of-scope, tuned on the validation set to trade OOS recall against false rejections. Then evaluate the LoRA adapter's accuracy against the fully fine-tuned model to decide which one to serve.</p>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/SaiSridharParimi/intent-classification">Source on GitHub</a> - notebooks, metrics, Streamlit app</li>
+        <li><a href="https://huggingface.co/datasets/PolyAI/banking77">Banking77</a> · <a href="https://huggingface.co/datasets/clinc/clinc_oos">CLINC150</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

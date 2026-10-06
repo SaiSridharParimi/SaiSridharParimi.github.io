@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zero-Downtime AWS Platform - Sai Sridhar Parimi</title>
+  <meta name="description" content="Terraform-provisioned AWS stack with Packer-built AMIs and rolling instance refreshes on every merge.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Zero-Downtime AWS Web Platform</h1>
+      <p class="hook">Every merge to <code>main</code> bakes a new machine image and rolls it across an auto-scaling group behind a load balancer, keeping at least 90% of capacity healthy throughout.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>Terraform</li><li>Packer</li><li>GitHub Actions</li><li>EC2 Auto Scaling</li><li>ALB</li><li>RDS MySQL</li><li>S3</li><li>KMS</li><li>Secrets Manager</li><li>CloudWatch</li><li>Node.js</li>
+      </ul>
+      <p>Two repositories: <strong>tf-aws-infra</strong> (Terraform for the environment) and <strong>webapp</strong> (the Node.js service, its tests, and the build/deploy pipeline).</p>
+
+      <h2>Problem</h2>
+      <p>Deploying a web API by hand to a single VM - copy a build over SSH, run a setup script - makes every release a manual step and a moment of downtime, and the server's state drifts from what's in the repo. The goal was to declare the whole environment in code, make releases immutable, and replace servers without dropping traffic.</p>
+
+      <h2>Approach / architecture</h2>
+      <h3>Request path</h3>
+      <ol class="flow">
+        <li><strong>Route 53 → Application Load Balancer</strong><span>An alias record points the domain at an internet-facing ALB across three subnets. HTTPS uses an ACM certificate with a TLS 1.3 security policy.</span></li>
+        <li><strong>Target group → Auto Scaling group</strong><span>3-5 instances on port 8080. ELB health checks call <code>/healthz</code>, which verifies the database connection, so an instance that can't reach RDS is taken out of rotation.</span></li>
+        <li><strong>App → RDS and S3</strong><span>Express + Sequelize. <code>/v1/file</code> uploads files to S3 and stores their metadata in RDS (MySQL 8.0 in private subnets, not publicly accessible).</span></li>
+      </ol>
+
+      <h3>Release path</h3>
+      <ol class="flow">
+        <li><strong>Pull request checks</strong><span>API tests (Jest + supertest) against a MySQL 8.0 service container, plus <code>packer validate</code> and <code>terraform fmt</code>/<code>validate</code>.</span></li>
+        <li><strong>Bake the AMI on merge</strong><span>Packer builds from Ubuntu 24.04: installs Node 18 and the app, creates a dedicated service user, and installs a systemd unit and the CloudWatch agent.</span></li>
+        <li><strong>Share across accounts</strong><span>The pipeline waits for the image to become available, then shares it from the dev AWS account with the demo account.</span></li>
+        <li><strong>New launch template version</strong><span>Created from the latest version with only the image ID changed.</span></li>
+        <li><strong>Rolling instance refresh</strong><span>Minimum 90% healthy, 300 s warm-up per instance. The workflow polls the refresh and fails the run if it doesn't complete successfully.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>Immutable images over in-place deploys</h3>
+        <p>Nothing is installed on a running server. A bad build becomes an AMI whose instances never pass health checks, not a half-upgraded box, and every instance is identical to the tested image. The tradeoff is release speed: a full image build plus a rolling refresh with a 5-minute warm-up per instance.</p>
+      </div>
+      <div class="decision">
+        <h3>One image, many environments</h3>
+        <p>The AMI carries no environment-specific values. Terraform's launch-template user data writes the database host, credentials, and bucket name at boot, so the same image runs in both the dev and demo accounts.</p>
+      </div>
+      <div class="decision">
+        <h3>Layered network access</h3>
+        <p>Security groups reference each other instead of IP ranges: the ALB accepts 80/443 from the internet, instances accept the app port only from the ALB, and the database accepts 3306 only from the instances. Application instances sit in public subnets, which avoids NAT gateway cost; the security-group chain keeps them unreachable except through the load balancer.</p>
+      </div>
+      <div class="decision">
+        <h3>Encryption with separate keys</h3>
+        <p>Four customer-managed KMS keys - EBS volumes, RDS, S3, Secrets Manager - each rotating every 90 days, so access to one data store doesn't imply access to another. The database password is generated by Terraform and stored in Secrets Manager.</p>
+      </div>
+      <div class="decision">
+        <h3>Simple, predictable scaling</h3>
+        <p>CloudWatch alarms on average CPU over two 2-minute periods add or remove one instance at a time, with a 60-second cooldown. Small steps make scaling easy to reason about at this traffic level.</p>
+      </div>
+      <div class="decision">
+        <h3>Observability from day one</h3>
+        <p>Structured JSON logs ship to CloudWatch Logs through the agent. Every endpoint emits StatsD counters and timers - request counts, S3 upload/delete latency, database query latency - collected by the same agent.</p>
+      </div>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">3-5</span><span class="label">auto-scaled instances across 3 subnets</span></li>
+        <li><span class="value">≥ 90%</span><span class="label">capacity healthy during every rollout</span></li>
+        <li><span class="value">4</span><span class="label">KMS keys with 90-day rotation</span></li>
+        <li><span class="value">12</span><span class="label">API tests gating every PR</span></li>
+      </ul>
+
+      <h3>Next steps</h3>
+      <p>Multi-AZ RDS for database failover, fetching secrets from Secrets Manager at boot instead of templating them into user data, and moving instances to private subnets behind a NAT gateway.</p>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/SaiSridharParimi/tf-aws-infra-fork">tf-aws-infra on GitHub</a> - Terraform</li>
+        <li><a href="https://github.com/SaiSridharParimi/webapp-fork">webapp on GitHub</a> - app, tests, Packer, CI/CD</li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>

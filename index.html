@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sai Sridhar Parimi - Projects</title>
+  <meta name="description" content="Projects by Sai Sridhar Parimi: machine learning and cloud systems.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <a class="home" href="./">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">Sai Sridhar Parimi</h1>
+      <p>I build machine-learning systems and the cloud infrastructure that runs them. Below are projects spanning model fine-tuning, retrieval-augmented generation, and production infrastructure on AWS - each with its architecture and the design decisions behind it.</p>
+      <div class="links">
+        <a href="https://github.com/SaiSridharParimi">GitHub (SaiSridharParimi)</a>
+        <a href="https://github.com/sridhar3489">GitHub (sridhar3489)</a>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="ai-ml">
+      <h2 id="ai-ml">AI &amp; ML</h2>
+      <ul class="project-list">
+        <li>
+          <a class="project-row" href="projects/multi-model-summarization.html">
+            <span class="project-name">Multi-Model Document Summarization<span class="tag">Paper</span></span>
+            <span class="project-problem">Extractive, abstractive, and hybrid summarizers compared across news, legislation, reports, and email.</span>
+            <span class="project-metric">0.4911 ROUGE-1 on BillSum (T5)</span>
+          </a>
+        </li>
+        <li>
+          <a class="project-row" href="projects/intent-classification.html">
+            <span class="project-name">Multi-Domain Intent Classification</span>
+            <span class="project-problem">One DistilBERT model for banking and general-assistant intents instead of two.</span>
+            <span class="project-metric">93.8% in-scope accuracy · 21 ms latency</span>
+          </a>
+        </li>
+        <li>
+          <a class="project-row" href="projects/python-docs-rag.html">
+            <span class="project-name">Python Docs Assistant (RAG)<span class="tag">Team</span></span>
+            <span class="project-problem">Answers Python questions grounded in the official docs, with cited sources.</span>
+            <span class="project-metric">~85% top-5 retrieval · 2-5 s answers</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+
+    <section class="group" aria-labelledby="systems">
+      <h2 id="systems">Systems &amp; Cloud</h2>
+      <ul class="project-list">
+        <li>
+          <a class="project-row" href="projects/zero-downtime-aws.html">
+            <span class="project-name">Zero-Downtime AWS Web Platform</span>
+            <span class="project-problem">Ship every merge to production by swapping whole machine images behind a load balancer.</span>
+            <span class="project-metric">Rolling AMI deploys · 3-5 auto-scaled instances</span>
+          </a>
+        </li>
+        <li>
+          <a class="project-row" href="projects/cloud-ide.html">
+            <span class="project-name">Cloud IDE</span>
+            <span class="project-problem">Pair coding in the browser: shared rooms, file tree, editor, and a live terminal.</span>
+            <span class="project-metric">React · Socket.IO · node-pty</span>
+          </a>
+        </li>
+        <li>
+          <a class="project-row" href="projects/patient-management.html">
+            <span class="project-name">Patient Management Microservices<span class="tag">Course project</span></span>
+            <span class="project-problem">Split a patient system into services that talk over REST, gRPC, and Kafka.</span>
+            <span class="project-metric">5 services · gRPC + Kafka</span>
+          </a>
+        </li>
+        <li>
+          <a class="project-row" href="projects/deployment-progression.html">
+            <span class="project-name">Deployment Progression</span>
+            <span class="project-problem">Three steps from one container to a Dockerized monorepo with CI/CD.</span>
+            <span class="project-metric">3 stages · images tagged per commit</span>
+          </a>
+        </li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>© Sai Sridhar Parimi · <a href="https://github.com/SaiSridharParimi">GitHub</a> · <a href="https://github.com/sridhar3489">GitHub (sridhar3489)</a></p>
+  </footer>
+
+  <script src="js/theme.js"></script>
+</body>
+</html>

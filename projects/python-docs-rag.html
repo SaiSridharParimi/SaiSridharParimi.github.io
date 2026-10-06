@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python Docs Assistant - Sai Sridhar Parimi</title>
+  <meta name="description" content="A retrieval-augmented chatbot over the official Python documentation, built with LangChain, ChromaDB, and Gemini.">
+  <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="home" href="../">Sai Sridhar Parimi</a>
+    <button class="theme-toggle" type="button" aria-pressed="false" hidden>Dark mode</button>
+  </header>
+
+  <main id="main">
+    <article class="prose">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">← All projects</a></nav>
+      <h1>Python Docs Assistant (RAG)</h1>
+      <p class="hook">A chatbot that answers Python questions only from the official docs - and shows which page each answer came from.</p>
+      <ul class="meta" aria-label="Stack">
+        <li>LangChain</li><li>ChromaDB</li><li>Gemini</li><li>text-embedding-004</li><li>Streamlit</li><li>BeautifulSoup</li><li>pytest</li>
+      </ul>
+      <p>Team project.</p>
+
+      <h2>Problem</h2>
+      <p>General-purpose LLMs answer Python questions confidently, including when they're wrong or out of date, and give you nothing to check against. The goal: answer from the documentation itself, show the passages used, and decline when the docs don't cover the question.</p>
+
+      <h2>Approach / architecture</h2>
+      <ol class="flow">
+        <li><strong>Scrape</strong><span>BeautifulSoup collects the Python tutorial, 33 standard-library module pages, the language reference, and asyncio docs from docs.python.org, stripping navigation and scripts, rate-limited to one request per second.</span></li>
+        <li><strong>Chunk</strong><span>Recursive splitting into 1,000-character chunks with 200 characters of overlap, keeping source URL, title, and position as metadata.</span></li>
+        <li><strong>Embed, with a cache</strong><span>Google <code>text-embedding-004</code> (768-dim) in batches of 100, with retries and exponential backoff. Vectors are cached on disk by content hash, so re-indexing only pays for new chunks.</span></li>
+        <li><strong>Store</strong><span>A persistent ChromaDB collection using cosine distance.</span></li>
+        <li><strong>Retrieve</strong><span>Normalize and embed the query, over-fetch 2× the requested top-k (default 5), filter by a similarity threshold, keep the best k. Optional Maximal Marginal Relevance reduces near-duplicate chunks.</span></li>
+        <li><strong>Prompt and generate</strong><span>A system prompt restricts answers to the supplied context and requires citations. Follow-ups include recent conversation history. Gemini generates at temperature 0.3.</span></li>
+        <li><strong>UI</strong><span>A Streamlit chat with expandable sources and relevance scores, sliders for temperature and number of sources, and one-click index rebuilds.</span></li>
+      </ol>
+
+      <h2>Key decisions &amp; tradeoffs</h2>
+      <div class="decision">
+        <h3>Decline instead of guess</h3>
+        <p>When no chunk clears the similarity threshold, the system returns a "not in the documentation" response and skips the LLM call entirely. That removes the main source of hallucination and saves an API call, at the cost of refusing some borderline questions.</p>
+      </div>
+      <div class="decision">
+        <h3>Tuning the relevance threshold</h3>
+        <p>The threshold started at 0.7 and was lowered to 0.5 after it filtered out relevant chunks. That's a deliberate recall-over-precision choice, since the prompt instructs the model to say so whenever the supplied context doesn't contain the answer.</p>
+      </div>
+      <div class="decision">
+        <h3>Resilience to API changes</h3>
+        <p>If the configured Gemini model is unavailable, the chain falls back through a list of alternative models instead of failing. Embedding calls retry with exponential backoff, and cached vectors mean a rebuild doesn't re-embed unchanged text.</p>
+      </div>
+      <div class="decision">
+        <h3>Modular pipeline</h3>
+        <p>Scraper, chunker, embedder, vector store, retriever, prompts, and chain are separate modules, so each can be tested and swapped on its own. The test suite covers each stage plus an end-to-end flow.</p>
+      </div>
+
+      <h2>Results</h2>
+      <ul class="stats">
+        <li><span class="value">~85%</span><span class="label">relevant documents in top-5 retrieval</span></li>
+        <li><span class="value">2-5 s</span><span class="label">end-to-end response time</span></li>
+        <li><span class="value">&lt;100 ms</span><span class="label">vector similarity search</span></li>
+        <li><span class="value">~100/min</span><span class="label">chunks embedded during indexing</span></li>
+        <li><span class="value">25</span><span class="label">automated tests across 4 suites</span></li>
+      </ul>
+
+      <h2>Links</h2>
+      <ul class="links-list">
+        <li><a href="https://github.com/Venkata-Nikhil-Amirisetty/Prompt-Final-Project">Source on GitHub</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="site-footer"><p><a href="../">← All projects</a></p></footer>
+  <script src="../js/theme.js"></script>
+</body>
+</html>
