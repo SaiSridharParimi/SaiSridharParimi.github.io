@@ -1,6 +1,6 @@
 # SaiSridharParimi.github.io
 
-Portfolio site served at https://sridharp.me (GitHub Pages, custom domain via `CNAME`).
+Portfolio site served at https://saisridharparimi.github.io (GitHub Pages, custom domain via `CNAME`).
 
 Plain HTML/CSS, no build step. Edit the files and push.
 
